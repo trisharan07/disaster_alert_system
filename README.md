@@ -4,6 +4,9 @@
 
 A complete full-stack project built on AWS demonstrating real-world cloud architecture and real-time disaster monitoring.
 
+**Live Demo:** [http://disaster-management-trisharan-001.s3-website.ap-south-1.amazonaws.com/](http://disaster-management-trisharan-001.s3-website.ap-south-1.amazonaws.com/)
+
+
 ---
 
 ## Project Structure
