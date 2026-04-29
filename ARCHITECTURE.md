@@ -1,16 +1,15 @@
-# Real-Time Disaster Alert System — Architecture Guide
+# Architecture Guide
 
-## 🏗️ System Overview
+## System Overview
 
-This system follows an **Event-Driven Serverless Architecture** on AWS.
-Every disaster event flows through a pipeline:  
-**Fetch → Evaluate → Alert → Store → Display**
+This system follows an Event-Driven Serverless Architecture on AWS. Every disaster event flows through a pipeline:
+**Fetch -> Evaluate -> Alert -> Store -> Display**
 
 ---
 
-## 📐 Architecture Diagram (Text)
+## Architecture Diagram
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                         EXTERNAL APIs                           │
 │  USGS Earthquake API  │  OpenWeatherMap API  │  GDACS (Floods)  │
@@ -18,13 +17,13 @@ Every disaster event flows through a pipeline:
                │ HTTP Polling (every 5 min via EventBridge)
                ▼
 ┌─────────────────────────────┐
-│  AWS EventBridge (Scheduler)│  ← Cron trigger: rate(5 minutes)
+│  AWS EventBridge (Scheduler)│  <- Cron trigger: rate(5 minutes)
 │  Triggers Lambda Fetcher    │
 └──────────────┬──────────────┘
                │ Invokes
                ▼
 ┌─────────────────────────────┐
-│  Lambda: fetchDisasterData  │  ← Fetches & normalizes API data
+│  Lambda: fetchDisasterData  │  <- Fetches & normalizes API data
 │  (Node.js 18)               │
 └──────┬───────────┬──────────┘
        │           │
@@ -66,30 +65,30 @@ Every disaster event flows through a pipeline:
 
 ---
 
-## 🔄 Event-Driven Flow (Step by Step)
+## Event-Driven Flow (Step by Step)
 
-1. **EventBridge** fires every 5 minutes
-2. **fetchDisasterData** Lambda runs:
-   - Calls USGS API for earthquakes
-   - Calls OpenWeatherMap for severe storms
-   - Normalizes data into a standard schema
-   - Checks thresholds (magnitude > 5.0, wind > 100 km/h)
-3. If threshold exceeded:
-   - Publishes message to **SNS Topic**
-   - Stores event in **DynamoDB**
-4. SNS fans out to two Lambda subscribers:
-   - **sendEmailAlert** → sends via SES
-   - **sendSMSAlert** → sends via SNS SMS
-5. **React Dashboard** polls API Gateway every 30s to show live updates
+1. **EventBridge** fires every 5 minutes.
+2. **fetchDisasterData** Lambda executes:
+   - Calls USGS API for earthquake data.
+   - Calls OpenWeatherMap for severe storm data.
+   - Normalizes data into a standard schema.
+   - Checks thresholds (e.g., magnitude > 5.0, wind > 100 km/h).
+3. If a threshold is exceeded:
+   - Publishes a message to the **SNS Topic**.
+   - Stores the event in **DynamoDB**.
+4. SNS fans out to subscriber Lambda functions:
+   - **sendEmailAlert**: Sends email via SES.
+   - **sendSMSAlert**: Sends SMS via SNS SMS.
+5. **React Dashboard** polls API Gateway every 30s to show live updates.
 
 ---
 
-## 🗃️ DynamoDB Schema
+## DynamoDB Schema
 
-**Table: DisasterEvents**
-```
-PK: eventId        (String) — e.g., "eq_us2024abc123"
-SK: timestamp      (String) — ISO 8601
+### Table: DisasterEvents
+```text
+PK: eventId        (String) - e.g., "eq_us2024abc123"
+SK: timestamp      (String) - ISO 8601
 type:              "EARTHQUAKE" | "STORM" | "FLOOD"
 magnitude:         Number
 location:          { lat, lng, name }
@@ -100,9 +99,9 @@ alertSent:         Boolean
 TTL:               Unix timestamp (30 days auto-delete)
 ```
 
-**Table: Subscribers**
-```
-PK: subscriberId   (String) — UUID
+### Table: Subscribers
+```text
+PK: subscriberId   (String) - UUID
 email:             String
 phone:             String (E.164 format)
 location:          { lat, lng, radiusKm }
@@ -112,24 +111,24 @@ active:            Boolean
 
 ---
 
-## ☁️ AWS Services Used (All Free Tier Eligible)
+## AWS Services Used
 
-| Service        | Purpose                          | Free Tier Limit          |
-|---------------|----------------------------------|--------------------------|
-| Lambda        | All backend logic                | 1M requests/month        |
-| DynamoDB      | Store events & subscribers       | 25 GB storage            |
-| SNS           | Notifications + fan-out          | 1M publishes/month       |
-| SES           | Email alerts                     | 62,000 emails/month      |
-| API Gateway   | REST API for frontend            | 1M calls/month           |
-| EventBridge   | Cron scheduler                   | 14M events/month         |
-| S3            | Frontend hosting                 | 5 GB storage             |
-| CloudFront    | CDN for frontend                 | 1 TB transfer/month      |
+| Service | Purpose | Free Tier Limit |
+| :--- | :--- | :--- |
+| AWS Lambda | Core backend business logic | 1M requests/month |
+| Amazon DynamoDB | Storage for events and subscribers | 25 GB storage |
+| Amazon SNS | Push notifications and fan-out architecture | 1M publishes/month |
+| Amazon SES | Email alert delivery | 62,000 emails/month |
+| Amazon API Gateway | RESTful endpoints for frontend | 1M calls/month |
+| Amazon EventBridge | Cron scheduler for polling | 14M events/month |
+| Amazon S3 | Frontend asset hosting | 5 GB storage |
+| Amazon CloudFront | Content Delivery Network (CDN) | 1 TB transfer/month |
 
 ---
 
-## 🔐 Security Notes
+## Security Notes
 
-- API Gateway uses API keys for frontend calls
-- Lambda roles use least-privilege IAM policies
-- DynamoDB access restricted to Lambda execution roles
-- CORS configured for specific frontend domain only
+- API Gateway utilizes API keys for frontend requests.
+- Lambda execution roles strictly adhere to least-privilege IAM policies.
+- DynamoDB access is securely restricted to authorized Lambda roles.
+- Cross-Origin Resource Sharing (CORS) is configured exclusively for the permitted frontend domain.
