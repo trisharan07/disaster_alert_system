@@ -58,16 +58,58 @@ Please refer to `docs/DEPLOYMENT.md` for a comprehensive deployment guide, inclu
 
 ## System Architecture
 
-| Concept | Implementation |
-| :--- | :--- |
-| Event-Driven Architecture | EventBridge triggers Lambda, which fans out via SNS |
-| Serverless Computing | AWS Lambda |
-| Real-Time Data Sources | USGS GeoJSON API and OpenWeatherMap |
-| Database | DynamoDB with TTL (Time-To-Live auto-expiry) |
-| Pub/Sub Messaging | SNS Topic with multiple subscribers |
-| REST API | API Gateway combined with Lambda |
-| Frontend | React Single Page Application (SPA) |
-| Infrastructure as Code | AWS SAM (CloudFormation) |
+```mermaid
+graph TD
+    %% External Data Sources
+    subgraph External Sources
+        USGS[USGS Earthquake API]
+        OWM[OpenWeatherMap API]
+    end
+
+    %% Scheduling
+    EB[AWS EventBridge\nCron: 5 min] -->|Triggers| FetcherLambda
+
+    %% Fetch & Process
+    subgraph AWS Backend Logic
+        FetcherLambda(fetchDisasterData\nLambda)
+        USGS -->|GET| FetcherLambda
+        OWM -->|GET| FetcherLambda
+    end
+
+    %% Storage & Messaging
+    FetcherLambda -->|Store Raw Event| DynamoDB[(DynamoDB:\nDisasterEvents)]
+    FetcherLambda -->|Publish Severe Event| SNS[AWS SNS Topic:\nDisasterAlerts]
+
+    %% Alert Fan-out
+    subgraph Alert Fan-out
+        SNS -->|Trigger| EmailLambda(sendEmailAlert\nLambda)
+        EmailLambda -->|Send Email| SES[AWS SES]
+    end
+
+    %% Frontend API
+    subgraph REST API
+        APIGW[API Gateway]
+        GetDisastersLambda(getDisasters\nLambda)
+        SubscribeLambda(subscribe\nLambda)
+        
+        APIGW -->|GET /disasters| GetDisastersLambda
+        APIGW -->|POST /subscribe| SubscribeLambda
+        
+        GetDisastersLambda -->|Read| DynamoDB
+        SubscribeLambda -->|Write| SubDB[(DynamoDB:\nSubscribers)]
+        SubscribeLambda -->|Subscribe Email| SNS
+    end
+
+    %% Frontend
+    subgraph Frontend
+        ReactUI[React SPA]
+        ReactUI -->|HTTPS| APIGW
+    end
+    
+    %% Users
+    SES --> Users((Users))
+    ReactUI --- Users
+```
 
 ---
 
