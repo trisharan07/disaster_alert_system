@@ -44,13 +44,14 @@ jobs:
         uses: aws-actions/setup-sam@v2
 
       - name: SAM Build
-        run: sam build --use-container
+        run: sam build
 
       - name: SAM Deploy
         run: |
           sam deploy \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
+            --resolve-s3 \
             --stack-name disaster-alert-system \
             --region ${{ secrets.AWS_REGION }} \
             --capabilities CAPABILITY_IAM \
