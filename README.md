@@ -148,3 +148,4 @@ graph TD
 * **API Routing**: AWS API Gateway (REST)
 * **Task Scheduling**: AWS EventBridge
 * **Infrastructure as Code**: AWS SAM (Serverless Application Model)
+* **CI/CD Pipeline**: GitHub Actions for automated AWS and S3 deployment
