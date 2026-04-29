@@ -1,0 +1,10 @@
+{
+  "name": "get-disasters",
+  "version": "1.0.0",
+  "description": "Lambda: REST API GET /disasters",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/util-dynamodb": "^3.600.0"
+  }
+}

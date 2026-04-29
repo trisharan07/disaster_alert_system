@@ -1,0 +1,198 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: Real-Time Disaster Alert System — AWS SAM Template
+
+# ─── Global Lambda Settings ────────────────────────────────────────────────
+Globals:
+  Function:
+    Runtime:     nodejs18.x
+    Timeout:     30
+    MemorySize:  256
+    Environment:
+      Variables:
+        DYNAMO_TABLE:       !Ref DisasterEventsTable
+        SUBSCRIBERS_TABLE:  !Ref SubscribersTable
+        SNS_TOPIC_ARN:      !Ref DisasterAlertTopic
+        AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1"
+
+# ─── Parameters ───────────────────────────────────────────────────────────
+Parameters:
+  OpenWeatherApiKey:
+    Type: String
+    Default: ""
+    Description: "OpenWeatherMap API key (optional)"
+  SesFromEmail:
+    Type: String
+    Default: "alerts@example.com"
+    Description: "Verified SES sender email address"
+
+# ─── Resources ─────────────────────────────────────────────────────────────
+Resources:
+
+  # ── DynamoDB Tables ─────────────────────────────────────────────────────
+  DisasterEventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: DisasterEvents
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: eventId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: eventId
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      GlobalSecondaryIndexes:
+        - IndexName: TimestampIndex
+          KeySchema:
+            - AttributeName: timestamp
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  SubscribersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: DisasterSubscribers
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: subscriberId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: subscriberId
+          KeyType: HASH
+
+  # ── SNS Topic ────────────────────────────────────────────────────────────
+  DisasterAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: DisasterAlerts
+      DisplayName: "Disaster Alert System"
+
+  # ── Lambda Functions ─────────────────────────────────────────────────────
+  FetchDisasterDataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: fetchDisasterData
+      CodeUri: functions/fetchDisasterData/
+      Handler: index.handler
+      Description: Fetches real-time disaster data from USGS and OpenWeatherMap
+      Environment:
+        Variables:
+          OPENWEATHER_KEY:    !Ref OpenWeatherApiKey
+          EQ_MIN_MAGNITUDE:   "4.5"
+          WIND_THRESHOLD:     "80"
+      Policies:
+        - DynamoDBCrudPolicy:  { TableName: !Ref DisasterEventsTable }
+        - SNSPublishMessagePolicy: { TopicName: !GetAtt DisasterAlertTopic.TopicName }
+      Events:
+        ScheduledFetch:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Name: DisasterFetchSchedule
+            Enabled: true
+
+  GetDisastersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: getDisasters
+      CodeUri: functions/getDisasters/
+      Handler: index.handler
+      Description: REST API endpoint to return disaster events to frontend
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref DisasterEventsTable }
+      Events:
+        ApiGet:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DisasterApi
+            Path: /disasters
+            Method: GET
+        ApiOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DisasterApi
+            Path: /disasters
+            Method: OPTIONS
+
+  SubscribeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: subscribeUser
+      CodeUri: functions/subscribe/
+      Handler: index.handler
+      Description: Register user email/phone for disaster alert notifications
+      Environment:
+        Variables:
+          SES_FROM_EMAIL: !Ref SesFromEmail
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref SubscribersTable }
+        - SNSCrudPolicy:      { TopicName: !GetAtt DisasterAlertTopic.TopicName }
+      Events:
+        ApiPost:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DisasterApi
+            Path: /subscribe
+            Method: POST
+        ApiOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DisasterApi
+            Path: /subscribe
+            Method: OPTIONS
+
+  SendEmailAlertFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: sendEmailAlert
+      CodeUri: functions/sendEmailAlert/
+      Handler: index.handler
+      Description: Sends email alerts via SES when disaster is detected
+      Environment:
+        Variables:
+          SES_FROM_EMAIL: !Ref SesFromEmail
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref SubscribersTable }
+        - Statement:
+            - Effect: Allow
+              Action:
+                - "ses:SendEmail"
+                - "ses:SendRawEmail"
+              Resource: "*"
+      Events:
+        SnsAlert:
+          Type: SNS
+          Properties:
+            Topic: !Ref DisasterAlertTopic
+
+  # ── API Gateway ──────────────────────────────────────────────────────────
+  DisasterApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: DisasterAlertAPI
+      StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,x-api-key'"
+        AllowOrigin:  "'*'"
+
+# ─── Outputs ───────────────────────────────────────────────────────────────
+Outputs:
+  ApiUrl:
+    Description: "API Gateway endpoint URL"
+    Value: !Sub "https://${DisasterApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  DisasterEventsTableName:
+    Description: "DynamoDB table for disaster events"
+    Value: !Ref DisasterEventsTable
+  SnsTopicArn:
+    Description: "SNS Topic ARN for alerts"
+    Value: !Ref DisasterAlertTopic

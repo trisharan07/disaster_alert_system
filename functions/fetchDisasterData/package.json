@@ -1,0 +1,11 @@
+{
+  "name": "fetch-disaster-data",
+  "version": "1.0.0",
+  "description": "Lambda: fetches USGS + OpenWeatherMap disaster data",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/client-sns": "^3.600.0",
+    "@aws-sdk/util-dynamodb": "^3.600.0"
+  }
+}

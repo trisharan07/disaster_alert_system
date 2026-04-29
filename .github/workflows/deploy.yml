@@ -1,0 +1,127 @@
+name: Deploy Disaster Alert System
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+
+jobs:
+  # ─── Job 1: Deploy Backend via AWS SAM ────────────────────────────────────
+  deploy-backend:
+    name: Build & Deploy Backend (SAM)
+    runs-on: ubuntu-latest
+    outputs:
+      api-url: ${{ steps.get-api-url.outputs.api_url }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Lambda dependencies
+        run: |
+          for fn in fetchDisasterData getDisasters subscribe sendEmailAlert; do
+            echo "Installing deps for $fn..."
+            cd functions/$fn && npm ci --omit=dev && cd ../..
+          done
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      - name: Setup AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: SAM Build
+        run: sam build --use-container
+
+      - name: SAM Deploy
+        run: |
+          sam deploy \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --stack-name disaster-alert-system \
+            --region ${{ secrets.AWS_REGION }} \
+            --capabilities CAPABILITY_IAM \
+            --parameter-overrides \
+              OpenWeatherApiKey=${{ secrets.OPENWEATHER_API_KEY }} \
+              SesFromEmail=${{ secrets.SES_FROM_EMAIL }}
+
+      - name: Get API URL from CloudFormation outputs
+        id: get-api-url
+        run: |
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name disaster-alert-system \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
+            --output text)
+          echo "api_url=$API_URL" >> $GITHUB_OUTPUT
+          echo "✅ API URL: $API_URL"
+
+  # ─── Job 2: Build & Deploy Frontend to S3 ─────────────────────────────────
+  deploy-frontend:
+    name: Build & Deploy Frontend (S3)
+    runs-on: ubuntu-latest
+    needs: deploy-backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Build frontend
+        env:
+          VITE_API_URL: ${{ needs.deploy-backend.outputs.api-url }}
+        run: |
+          cd frontend
+          npm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to S3
+        run: |
+          aws s3 sync frontend/dist/ s3://${{ secrets.S3_BUCKET_NAME }} \
+            --delete \
+            --cache-control "max-age=86400"
+          # index.html should not be cached
+          aws s3 cp frontend/dist/index.html s3://${{ secrets.S3_BUCKET_NAME }}/index.html \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+      - name: Invalidate CloudFront cache (if configured)
+        if: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID != '' }}
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/*"
+
+      - name: Print deployment summary
+        run: |
+          echo "======================================"
+          echo "✅ DEPLOYMENT COMPLETE"
+          echo "Backend API: ${{ needs.deploy-backend.outputs.api-url }}"
+          echo "Frontend S3: http://${{ secrets.S3_BUCKET_NAME }}.s3-website-${{ secrets.AWS_REGION }}.amazonaws.com"
+          echo "======================================"

@@ -1,0 +1,11 @@
+{
+  "name": "send-email-alert",
+  "version": "1.0.0",
+  "description": "Lambda: send email alerts via SES when SNS triggers",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/client-ses": "^3.600.0",
+    "@aws-sdk/util-dynamodb": "^3.600.0"
+  }
+}

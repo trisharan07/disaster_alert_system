@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+frontend/dist/
+frontend/.vite/
+.aws-sam/
+samconfig.toml.bak
+
+# Environment variables — NEVER commit these
+.env
+.env.local
+.env.*.local
+
+# AWS credentials
+.aws/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
+
+# Lambda zip artifacts
+*.zip

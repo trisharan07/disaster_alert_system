@@ -1,0 +1,11 @@
+{
+  "name": "subscribe",
+  "version": "1.0.0",
+  "description": "Lambda: POST /subscribe — register users for disaster alerts",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/client-sns": "^3.600.0",
+    "@aws-sdk/util-dynamodb": "^3.600.0"
+  }
+}
